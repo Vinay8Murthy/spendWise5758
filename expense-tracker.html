@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expense Tracker</title>
+
+<link rel="stylesheet" href="style.css">
+
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+<main class="page-shell">
+<section class="card">
+<div class="page-header">
+<div>
+<p class="eyebrow">Review And Categorize</p>
+<h1>Expense Tracker</h1>
+<p class="intro">
+Edit imported records, add your own entries, and maintain custom category
+labels directly in the table.
+</p>
+</div>
+<a class="button-link secondary" href="index.html">Back To Scanner</a>
+</div>
+
+<div class="toolbar">
+<button id="addRowBtn">+ Add Record</button>
+<button id="csvBtn">Download CSV</button>
+<button id="excelBtn">Download Excel</button>
+<button id="clearBtn" class="secondary">Clear All</button>
+</div>
+
+<div id="trackerStatus" class="status-panel">
+No records loaded yet. Scan a statement or add a row manually.
+</div>
+
+<div class="table-wrap">
+<table id="table">
+<thead>
+<tr>
+<th>Date</th>
+<th>Description</th>
+<th>Debit</th>
+<th>Credit</th>
+<th>Category</th>
+<th>Sub Category</th>
+<th>Group</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+
+<datalist id="categoryOptions"></datalist>
+<datalist id="subCategoryOptions"></datalist>
+<datalist id="groupOptions"></datalist>
+</section>
+</main>
+
+<script src="tracker.js"></script>
+</body>
+</html>

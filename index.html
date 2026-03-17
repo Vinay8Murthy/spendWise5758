@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expense Scanner</title>
+
+<link rel="stylesheet" href="style.css">
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+<main class="page-shell">
+<section class="card hero-card">
+<p class="eyebrow">Statement Import</p>
+<h1>Expense Scanner</h1>
+<p class="intro">
+Upload a statement image or PDF, extract the transactions, and continue in the
+expense tracker for review and categorization.
+</p>
+
+<div class="toolbar">
+<input type="file" id="fileInput" accept="image/*,application/pdf">
+<button id="scanBtn">Scan Statement</button>
+<a class="button-link secondary" href="expense-tracker.html">Open Expense Tracker</a>
+</div>
+
+<div id="status" class="status-panel">Choose a file to begin.</div>
+</section>
+</main>
+
+<script src="parser.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
