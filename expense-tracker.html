@@ -9,6 +9,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 <main class="page-shell">
@@ -29,6 +31,7 @@ labels directly in the table.
 <button id="addRowBtn">+ Add Record</button>
 <button id="csvBtn">Download CSV</button>
 <button id="excelBtn">Download Excel</button>
+<button id="pdfBtn">Download PDF</button>
 <button id="clearBtn" class="secondary">Clear All</button>
 </div>
 
@@ -36,6 +39,15 @@ labels directly in the table.
 No records loaded yet. Scan a statement or add a row manually.
 </div>
 
+<div class="tabs" role="tablist" aria-label="Expense tracker sections">
+<button class="tab-button active" data-tab="records" role="tab" aria-selected="true">Records</button>
+<button class="tab-button" data-tab="categories" role="tab" aria-selected="false">Categories</button>
+<button class="tab-button" data-tab="subCategories" role="tab" aria-selected="false">Sub Categories</button>
+<button class="tab-button" data-tab="groups" role="tab" aria-selected="false">Groups</button>
+</div>
+
+<section class="tab-panel active" data-panel="records">
+<div class="validation-summary" id="validationSummary"></div>
 <div class="table-wrap">
 <table id="table">
 <thead>
@@ -53,10 +65,46 @@ No records loaded yet. Scan a statement or add a row manually.
 <tbody></tbody>
 </table>
 </div>
+</section>
 
-<datalist id="categoryOptions"></datalist>
-<datalist id="subCategoryOptions"></datalist>
-<datalist id="groupOptions"></datalist>
+<section class="tab-panel" data-panel="categories">
+<div class="manager-card">
+<h2>Categories</h2>
+<p class="manager-copy">Create and maintain the category options used by each expense record.</p>
+<div class="manager-form">
+<input id="categoryInput" type="text" placeholder="Add a category">
+<button data-add-option="category">Add Category</button>
+</div>
+<div id="categoryError" class="inline-error"></div>
+<div id="categoryList" class="option-list"></div>
+</div>
+</section>
+
+<section class="tab-panel" data-panel="subCategories">
+<div class="manager-card">
+<h2>Sub Categories</h2>
+<p class="manager-copy">Maintain sub category options for more detailed expense tagging.</p>
+<div class="manager-form">
+<input id="subCategoryInput" type="text" placeholder="Add a sub category">
+<button data-add-option="subCategory">Add Sub Category</button>
+</div>
+<div id="subCategoryError" class="inline-error"></div>
+<div id="subCategoryList" class="option-list"></div>
+</div>
+</section>
+
+<section class="tab-panel" data-panel="groups">
+<div class="manager-card">
+<h2>Groups</h2>
+<p class="manager-copy">Use groups for custom rollups like business unit, account, or household bucket.</p>
+<div class="manager-form">
+<input id="groupInput" type="text" placeholder="Add a group">
+<button data-add-option="group">Add Group</button>
+</div>
+<div id="groupError" class="inline-error"></div>
+<div id="groupList" class="option-list"></div>
+</div>
+</section>
 </section>
 </main>
 

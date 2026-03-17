@@ -172,6 +172,8 @@ function analyzeAmounts(amounts, previousBalance, hint) {
 }
 
 function findDiffPair(amounts) {
+  let bestMatch = null;
+
   for (let i = 0; i < amounts.length; i++) {
     for (let j = i + 1; j < amounts.length; j++) {
       for (let k = 0; k < amounts.length; k++) {
@@ -182,20 +184,21 @@ function findDiffPair(amounts) {
         const difference = roundToCents(Math.abs(amounts[i] - amounts[j]));
 
         if (difference === roundToCents(amounts[k])) {
-          const currentBalance = amounts[Math.min(i, j)];
-          const previousBalance = amounts[Math.max(i, j)];
-
-          return {
+          const match = {
             amount: amounts[k],
-            currentBalance,
-            previousBalance
+            currentBalance: amounts[i],
+            previousBalance: amounts[j]
           };
+
+          if (!bestMatch || match.amount < bestMatch.amount) {
+            bestMatch = match;
+          }
         }
       }
     }
   }
 
-  return null;
+  return bestMatch;
 }
 
 function findClosestAmount(candidates, target) {
