@@ -97,7 +97,9 @@ function createTransactionRecord(transaction = {}) {
     credit: transaction.credit || "",
     category: transaction.category || "",
     subCategory: transaction.subCategory || "",
-    group: transaction.group || ""
+    group: transaction.group || "",
+    sourceFile: transaction.sourceFile || "",
+    importedAt: transaction.importedAt || ""
   };
 }
 
@@ -112,7 +114,9 @@ function render() {
   if (!transactions.length) {
     trackerStatus.textContent = "No records loaded yet. Scan a statement or add a row manually.";
   } else {
-    trackerStatus.textContent = `${transactions.length} record(s) ready to review.`;
+    trackerStatus.textContent =
+      `${transactions.length} total record(s) ready to review. ` +
+      "Previously scanned records stay here until you clear them.";
   }
 
   validationSummary.textContent = issues.length

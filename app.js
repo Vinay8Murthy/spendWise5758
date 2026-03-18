@@ -20,10 +20,17 @@ document.getElementById("scanBtn").onclick = async () => {
 
     status.textContent = "Parsing transactions...";
 
-    const transactions = detectAndParse(text).map(createTransactionRecord);
+    const existingTransactions = loadStoredTransactions();
+    const scannedTransactions = detectAndParse(text).map(transaction =>
+      createTransactionRecord(transaction, file.name)
+    );
+    const transactions = [...existingTransactions, ...scannedTransactions];
+
     localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
 
-    status.textContent = `Parsed ${transactions.length} record(s). Opening expense tracker...`;
+    status.textContent =
+      `Parsed ${scannedTransactions.length} new record(s). ` +
+      `${transactions.length} total record(s) saved. Opening expense tracker...`;
     window.location.href = "expense-tracker.html";
   } catch (error) {
     status.textContent = "Scanning failed. Please try a clearer file.";
@@ -31,7 +38,22 @@ document.getElementById("scanBtn").onclick = async () => {
   }
 };
 
-function createTransactionRecord(transaction = {}) {
+function loadStoredTransactions() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    return JSON.parse(raw).map(transaction => createTransactionRecord(transaction));
+  } catch (error) {
+    console.error("Failed to load stored transactions", error);
+    return [];
+  }
+}
+
+function createTransactionRecord(transaction = {}, sourceFile = "") {
   return {
     date: transaction.date || "",
     description: transaction.description || "",
@@ -39,7 +61,9 @@ function createTransactionRecord(transaction = {}) {
     credit: transaction.credit || "",
     category: transaction.category || "",
     subCategory: transaction.subCategory || "",
-    group: transaction.group || ""
+    group: transaction.group || "",
+    sourceFile: transaction.sourceFile || sourceFile || "",
+    importedAt: transaction.importedAt || new Date().toISOString()
   };
 }
 
