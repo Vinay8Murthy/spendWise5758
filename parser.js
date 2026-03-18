@@ -1,7 +1,7 @@
 const MONTH_NAMES = "Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec";
 const NUMERIC_DATE_PATTERN = /\b\d{2}[\/-]\d{2}[\/-]\d{2,4}\b/;
 const TEXTUAL_DATE_PATTERN = new RegExp(`\\b(?:${MONTH_NAMES})\\s+\\d{1,2},\\s+\\d{4}\\b`, "i");
-const DATE_PATTERN = new RegExp(
+const ANY_DATE_PATTERN = new RegExp(
   `(?:${NUMERIC_DATE_PATTERN.source})|(?:${TEXTUAL_DATE_PATTERN.source})`,
   "i"
 );
@@ -39,17 +39,137 @@ const DEBIT_KEYWORDS = [
   "charge"
 ];
 
+const PARSERS = [
+  {
+    id: "timeline",
+    canParse: text =>
+      TEXTUAL_DATE_PATTERN.test(text) &&
+      /(paid to|received from|credited to|debit|credit|utr no|transaction id)/i.test(text),
+    parse: parseTimelineStatement
+  },
+  {
+    id: "numeric-balance",
+    canParse: text => NUMERIC_DATE_PATTERN.test(text) && /\d{1,3}(?:,\d{3})*\.\d{2}/.test(text),
+    parse: parseNumericBalanceStatement
+  }
+];
+
 function detectAndParse(text) {
-  return parseAdvanced(text);
+  const normalized = normalizeText(text);
+
+  if (!normalized) {
+    return [];
+  }
+
+  const mixedEntries = splitEntriesByDate(normalized, ANY_DATE_PATTERN);
+
+  if (mixedEntries.length > 1) {
+    return parseMixedEntries(mixedEntries);
+  }
+
+  const parser = detectStatementParser(normalized);
+
+  if (parser) {
+    return parser.parse(normalized);
+  }
+
+  return parseWithFallback(normalized);
 }
 
-function parseAdvanced(text) {
-  const entries = collectEntries(text);
+function parseMixedEntries(entries) {
   const rows = [];
   let previousBalance = null;
 
   entries.forEach(entry => {
-    const parsed = parseEntry(entry, previousBalance);
+    if (TEXTUAL_DATE_PATTERN.test(entry)) {
+      const parsed = parseTimelineEntry(entry);
+
+      if (parsed) {
+        rows.push(parsed);
+      }
+
+      return;
+    }
+
+    if (NUMERIC_DATE_PATTERN.test(entry)) {
+      const parsed = parseNumericEntry(entry, previousBalance);
+
+      if (parsed) {
+        rows.push({
+          date: parsed.date,
+          description: parsed.description,
+          debit: parsed.debit,
+          credit: parsed.credit
+        });
+
+        if (parsed.balance !== null) {
+          previousBalance = parsed.balance;
+        }
+      }
+    }
+  });
+
+  return rows;
+}
+
+function detectStatementParser(text) {
+  return PARSERS.find(parser => parser.canParse(text)) || null;
+}
+
+function parseWithFallback(text) {
+  const candidates = [parseTimelineStatement(text), parseNumericBalanceStatement(text)];
+  return candidates.sort((left, right) => right.length - left.length)[0] || [];
+}
+
+function parseTimelineStatement(text) {
+  const entries = splitEntriesByDate(text, TEXTUAL_DATE_PATTERN);
+
+  return entries
+    .map(entry => parseTimelineEntry(entry))
+    .filter(Boolean);
+}
+
+function parseTimelineEntry(entry) {
+  const dateMatch = entry.match(TEXTUAL_DATE_PATTERN);
+
+  if (!dateMatch) {
+    return null;
+  }
+
+  const date = dateMatch[0];
+  const amounts = (entry.match(AMOUNT_PATTERN) || []).map(parseAmount);
+  const direction = inferDirectionFromKeywords(entry);
+
+  if (!amounts.length || !direction) {
+    return null;
+  }
+
+  const amount = amounts[amounts.length - 1];
+  const description = entry
+    .replace(date, " ")
+    .replace(AMOUNT_PATTERN, " ")
+    .replace(TIME_PATTERN, " ")
+    .replace(/\b(?:debit|credit)\b/gi, " ")
+    .replace(/\b(?:transaction id|utr no\.?|paid by|credited to)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+
+  return {
+    date,
+    description,
+    debit: direction === "debit" ? amount : "",
+    credit: direction === "credit" ? amount : ""
+  };
+}
+
+function parseNumericBalanceStatement(text) {
+  const entries = splitEntriesByDate(text, NUMERIC_DATE_PATTERN);
+  const rows = [];
+  let previousBalance = null;
+
+  entries.forEach(entry => {
+    const parsed = parseNumericEntry(entry, previousBalance);
 
     if (!parsed) {
       return;
@@ -70,46 +190,8 @@ function parseAdvanced(text) {
   return rows;
 }
 
-function collectEntries(text) {
-  const lines = text
-    .split(/\r?\n/)
-    .map(line => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-
-  const entries = [];
-  let current = "";
-
-  lines.forEach(line => {
-    if (DATE_PATTERN.test(line)) {
-      if (current) {
-        entries.push(current.trim());
-      }
-
-      current = line;
-      return;
-    }
-
-    if (current) {
-      current += " " + line;
-    }
-  });
-
-  if (current) {
-    entries.push(current.trim());
-  }
-
-  if (entries.length) {
-    return entries;
-  }
-
-  return text
-    .split(/(?=\b\d{2}[\/-]\d{2}[\/-]\d{2,4}\b)/)
-    .map(block => block.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-}
-
-function parseEntry(entry, previousBalance) {
-  const dateMatch = entry.match(DATE_PATTERN);
+function parseNumericEntry(entry, previousBalance) {
+  const dateMatch = entry.match(NUMERIC_DATE_PATTERN);
 
   if (!dateMatch) {
     return null;
@@ -125,7 +207,7 @@ function parseEntry(entry, previousBalance) {
   }
 
   const hint = inferDirectionFromKeywords(body);
-  const analysis = analyzeAmounts(amounts, previousBalance, hint);
+  const analysis = analyzeNumericAmounts(amounts, previousBalance, hint);
   const description = cleanDescription(body, amountStrings);
 
   return {
@@ -137,15 +219,7 @@ function parseEntry(entry, previousBalance) {
   };
 }
 
-function analyzeAmounts(amounts, previousBalance, hint) {
-  if (!amounts.length) {
-    return {
-      amount: "",
-      direction: hint || "debit",
-      balance: previousBalance
-    };
-  }
-
+function analyzeNumericAmounts(amounts, previousBalance, hint) {
   const diffPair = findDiffPair(amounts);
 
   if (diffPair) {
@@ -198,6 +272,80 @@ function analyzeAmounts(amounts, previousBalance, hint) {
   };
 }
 
+function splitEntriesByDate(text, datePattern) {
+  const lines = normalizeText(text)
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean);
+  const entries = [];
+  let current = "";
+
+  lines.forEach(line => {
+    if (datePattern.test(line)) {
+      if (current) {
+        entries.push(current.trim());
+      }
+
+      current = line;
+      return;
+    }
+
+    if (current) {
+      current += " " + line;
+    }
+  });
+
+  if (current) {
+    entries.push(current.trim());
+  }
+
+  if (entries.length) {
+    return entries;
+  }
+
+  return normalizeText(text)
+    .split(new RegExp(`(?=${datePattern.source})`, "i"))
+    .map(block => block.trim())
+    .filter(Boolean);
+}
+
+function normalizeText(text) {
+  return String(text || "")
+    .replace(/\r/g, "")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+}
+
+function inferDirectionFromBalances(currentBalance, previousBalance) {
+  if (currentBalance > previousBalance) {
+    return "credit";
+  }
+
+  if (currentBalance < previousBalance) {
+    return "debit";
+  }
+
+  return "";
+}
+
+function inferDirectionFromKeywords(body) {
+  const normalized = ` ${body.toLowerCase()} `;
+
+  if (containsKeyword(normalized, CREDIT_KEYWORDS)) {
+    return "credit";
+  }
+
+  if (containsKeyword(normalized, DEBIT_KEYWORDS)) {
+    return "debit";
+  }
+
+  return "";
+}
+
+function containsKeyword(body, keywords) {
+  return keywords.some(keyword => body.includes(` ${keyword} `));
+}
+
 function findDiffPair(amounts) {
   let bestMatch = null;
 
@@ -242,36 +390,6 @@ function findClosestAmount(candidates, target) {
   });
 
   return bestDelta <= 0.01 ? best : null;
-}
-
-function inferDirectionFromBalances(currentBalance, previousBalance) {
-  if (currentBalance > previousBalance) {
-    return "credit";
-  }
-
-  if (currentBalance < previousBalance) {
-    return "debit";
-  }
-
-  return "";
-}
-
-function inferDirectionFromKeywords(body) {
-  const normalized = " " + body.toLowerCase() + " ";
-
-  if (containsKeyword(normalized, CREDIT_KEYWORDS)) {
-    return "credit";
-  }
-
-  if (containsKeyword(normalized, DEBIT_KEYWORDS)) {
-    return "debit";
-  }
-
-  return "";
-}
-
-function containsKeyword(body, keywords) {
-  return keywords.some(keyword => body.includes(" " + keyword + " "));
 }
 
 function cleanDescription(body, amountStrings) {

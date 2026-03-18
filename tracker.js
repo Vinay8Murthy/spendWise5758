@@ -1,12 +1,7 @@
 (() => {
 const STORAGE_KEY = "expenseTrackerTransactions";
 const OPTIONS_STORAGE_KEY = "expenseTrackerOptions";
-const MANUAL_IMPORT_STORAGE_KEY = "expenseTrackerManualImportText";
 const DATE_INPUT_PATTERN = /^\d{2}[\/-]\d{2}[\/-]\d{2,4}$|^(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4}$/i;
-const ENTRY_DATE_PATTERN = /\b(?:\d{2}[\/-]\d{2}[\/-]\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4})\b/i;
-const TIME_PATTERN = /\b\d{1,2}:\d{2}\s*(?:am|pm)\b/i;
-const CURRENCY_PATTERN =
-  /(?:₹|Rs\.?\s*)\s*-?\d[\d,]*(?:\.\d{2})?|-?\d{1,3}(?:,\d{3})+(?:\.\d{2})?|-?\d+\.\d{2}/g;
 const FIELD_CONFIG = [
   { key: "date", type: "text" },
   { key: "description", type: "text" },
@@ -43,7 +38,6 @@ const NEW_OPTION_VALUE = "__new__";
 
 let transactions = loadTransactions();
 let options = loadOptions();
-let manualDrafts = [];
 let selectedIds = new Set();
 let currentFilter = "";
 let currentSort = "importedAt-desc";
@@ -65,14 +59,9 @@ document.getElementById("sortSelect").addEventListener("change", event => {
 document.getElementById("selectAllRows").addEventListener("change", event => {
   toggleSelectAllVisible(event.target.checked);
 });
-document.getElementById("generateDraftsBtn").onclick = generateManualDrafts;
-document.getElementById("addDraftsBtn").onclick = addManualDraftsToTracker;
-document.getElementById("clearManualImportBtn").onclick = clearManualImport;
 
 bindTabs();
 bindOptionManagers();
-loadManualImportState();
-setActiveTab(getInitialTab());
 render();
 
 function loadTransactions() {
@@ -233,7 +222,6 @@ function render() {
   selectAll.checked =
     visibleTransactions.length > 0 && visibleTransactions.every(transaction => selectedIds.has(transaction.id));
 
-  renderManualDrafts();
   renderOptionManagers();
 }
 
@@ -241,18 +229,6 @@ function bindTabs() {
   document.querySelectorAll(".tab-button").forEach(button => {
     button.addEventListener("click", () => setActiveTab(button.dataset.tab));
   });
-}
-
-function getInitialTab() {
-  const params = new URLSearchParams(window.location.search);
-  const requested = params.get("tab");
-
-  if (requested) {
-    return requested;
-  }
-
-  const manualText = localStorage.getItem(MANUAL_IMPORT_STORAGE_KEY);
-  return manualText ? "manualImport" : "records";
 }
 
 function setActiveTab(tabName) {
@@ -566,7 +542,6 @@ function createSelect(type, selectedValue, onChange) {
 
   options[type].forEach(option => {
     const optionElement = document.createElement("option");
-
     optionElement.value = option;
     optionElement.textContent = option;
     select.appendChild(optionElement);
@@ -781,206 +756,5 @@ function readableType(type) {
   }
 
   return type.charAt(0).toUpperCase() + type.slice(1);
-}
-
-function loadManualImportState() {
-  const text = localStorage.getItem(MANUAL_IMPORT_STORAGE_KEY) || "";
-  document.getElementById("manualImportText").value = text;
-
-  if (text.trim()) {
-    manualDrafts = createManualDrafts(text);
-  }
-}
-
-function generateManualDrafts() {
-  const text = document.getElementById("manualImportText").value;
-  localStorage.setItem(MANUAL_IMPORT_STORAGE_KEY, text);
-  manualDrafts = createManualDrafts(text);
-  setActiveTab("manualImport");
-  render();
-}
-
-function clearManualImport() {
-  document.getElementById("manualImportText").value = "";
-  localStorage.removeItem(MANUAL_IMPORT_STORAGE_KEY);
-  manualDrafts = [];
-  render();
-}
-
-function createManualDrafts(text) {
-  const normalized = String(text || "").replace(/\r/g, "").trim();
-
-  if (!normalized) {
-    return [];
-  }
-
-  const parsedRows =
-    typeof detectAndParse === "function" ? detectAndParse(normalized).map(createTransactionRecord) : [];
-
-  if (parsedRows.length) {
-    return parsedRows;
-  }
-
-  return splitManualEntries(normalized).map(buildDraftFromBlock);
-}
-
-function splitManualEntries(text) {
-  const lines = text
-    .split("\n")
-    .map(line => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-  const entries = [];
-  let current = "";
-
-  lines.forEach(line => {
-    if (ENTRY_DATE_PATTERN.test(line)) {
-      if (current) {
-        entries.push(current.trim());
-      }
-      current = line;
-      return;
-    }
-
-    if (current) {
-      current += " " + line;
-    } else {
-      current = line;
-    }
-  });
-
-  if (current) {
-    entries.push(current.trim());
-  }
-
-  return entries;
-}
-
-function buildDraftFromBlock(block) {
-  const dateMatch = block.match(ENTRY_DATE_PATTERN);
-  const date = dateMatch ? dateMatch[0] : "";
-  const amounts = (block.match(CURRENCY_PATTERN) || []).map(value =>
-    parseFloat(value.replace(/₹/g, "").replace(/Rs\.?\s*/gi, "").replace(/,/g, "").trim())
-  );
-  const lower = block.toLowerCase();
-  const direction = lower.includes("credit") || lower.includes("received") ? "credit" : "debit";
-  const amount = amounts.length ? amounts[amounts.length - 1] : "";
-  const description = block
-    .replace(date, " ")
-    .replace(CURRENCY_PATTERN, " ")
-    .replace(TIME_PATTERN, " ")
-    .replace(/\b(?:debit|credit)\b/gi, " ")
-    .replace(/\b(?:transaction id|utr no\.?|paid by|credited to)\b/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 120);
-
-  return createTransactionRecord({
-    date,
-    description,
-    debit: direction === "debit" ? amount : "",
-    credit: direction === "credit" ? amount : ""
-  });
-}
-
-function renderManualDrafts() {
-  const tbody = document.querySelector("#manualDraftTable tbody");
-  const status = document.getElementById("manualImportStatus");
-
-  tbody.innerHTML = "";
-
-  if (!manualDrafts.length) {
-    status.textContent =
-      document.getElementById("manualImportText").value.trim()
-        ? "No draft rows generated yet. Try Generate Draft Rows and then edit the results."
-        : "No OCR text loaded yet.";
-    return;
-  }
-
-  status.textContent = `${manualDrafts.length} draft row(s) ready for review before import.`;
-
-  manualDrafts.forEach((draft, index) => {
-    const row = document.createElement("tr");
-
-    FIELD_CONFIG.forEach(field => {
-      const cell = document.createElement("td");
-      let control;
-
-      if (field.type === "select") {
-        control = createSelect(field.optionType, draft[field.key], value => {
-          if (value === NEW_OPTION_VALUE) {
-            createManualDraftOption(field.optionType, index, field.key);
-            return;
-          }
-
-          updateManualDraft(index, field.key, value);
-        });
-      } else {
-        control = document.createElement("input");
-        control.type = "text";
-        control.value = draft[field.key];
-        control.addEventListener("input", event => {
-          updateManualDraft(index, field.key, event.target.value);
-        });
-      }
-
-      cell.appendChild(control);
-      row.appendChild(cell);
-    });
-
-    const actionCell = document.createElement("td");
-    const removeButton = document.createElement("button");
-    removeButton.textContent = "Delete";
-    removeButton.className = "danger";
-    removeButton.onclick = () => {
-      manualDrafts.splice(index, 1);
-      render();
-    };
-    actionCell.appendChild(removeButton);
-    row.appendChild(actionCell);
-
-    tbody.appendChild(row);
-  });
-}
-
-function updateManualDraft(index, key, value) {
-  manualDrafts[index][key] = value;
-}
-
-function createManualDraftOption(type, draftIndex, fieldKey) {
-  const label = readableType(type);
-  const value = window.prompt(`Create a new ${label.toLowerCase()}:`, "");
-
-  if (value === null) {
-    render();
-    return;
-  }
-
-  const result = addOption(type, value, false);
-
-  if (!result.ok) {
-    showOptionError(type, result.message);
-    render();
-    return;
-  }
-
-  updateManualDraft(draftIndex, fieldKey, result.value);
-  render();
-}
-
-function addManualDraftsToTracker() {
-  if (!manualDrafts.length) {
-    window.alert("Generate draft rows first.");
-    return;
-  }
-
-  const validDrafts = manualDrafts.map(createTransactionRecord);
-  transactions = [...transactions, ...validDrafts];
-  saveTransactions();
-  localStorage.setItem(MANUAL_IMPORT_STORAGE_KEY, document.getElementById("manualImportText").value);
-  manualDrafts = [];
-  document.getElementById("manualImportText").value = "";
-  localStorage.removeItem(MANUAL_IMPORT_STORAGE_KEY);
-  setActiveTab("records");
-  render();
 }
 })();
